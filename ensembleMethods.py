@@ -24,7 +24,6 @@ class baseModel():
         
         self.train_test_split()
         
-        self.saved_forecasts_ = []
 
         
     def getData(self, ticker = None, month = None, year = None):
@@ -83,18 +82,15 @@ class baseModel():
         
 ########### Train Forecast Methods #############3        
         
-    def naiveSeasonalTrainForecast(self, save_model = False):
-        
+    def naiveSeasonalTrainForecast(self, save_model = False, reset_ensemble_save_list = True):
         self.y = self.y_train
-        self.naiveSeasonalForecast()
         
-#         train_forecast_df = self.combined_df
-        
-#         series =(train_forecast_df[train_forecast_df['Result']=='Forecasted']['Close'])-(self.y_test)
-#         self.resid= series.dropna()
-        
+        self.naiveSeasonalForecast()        
         self.getEvaluation()
         self.getTrainForecastPlot()
+        
+        if reset_ensemble_save_list == True:
+            self.saved_forecasts_ = []
         
         if save_model == True:
             self.saved_forecasts_.append(self.combined_df)
@@ -102,13 +98,8 @@ class baseModel():
         
     def driftTrainForecast(self, save_model = False):
         self.y = self.y_train
+        
         self.driftForecast()
-        
-#         train_forecast_df = self.combined_df
-        
-#         series =(train_forecast_df[train_forecast_df['Result']=='Forecasted']['Close'])-(self.y_test)
-#         self.resid= series.dropna()
-        
         self.getEvaluation()
         self.getTrainForecastPlot()
         
@@ -117,15 +108,11 @@ class baseModel():
         
     def naiveTrainForecast(self, save_model = False):
         self.y = self.y_train
-        self.naiveForecast()
         
-#         train_forecast_df = self.combined_df
-        
-#         series =(train_forecast_df[train_forecast_df['Result']=='Forecasted']['Close'])-(self.y_test)
-#         self.resid= series.dropna()
-        
+        self.naiveForecast()       
         self.getEvaluation()
         self.getTrainForecastPlot() 
+        
         if save_model == True:
             self.saved_forecasts_.append(self.combined_df)
             
@@ -303,30 +290,5 @@ class baseModel():
         return period
     
 
-        
-        
-class trainingMethods(baseModel):   
-    
-    def __init__(self, ticker = None, trim_month = None, trim_year = None):
-        super().__init__(ticker, trim_month, trim_year)
-    
-    
-class forecastMethods(baseModel):
-            pass
-        
-        
-        
-        
-        
-        
-
-        
-def getMAPE():
-    pass
-    
-
-def getMAE():
-    pass
-    
         
         
