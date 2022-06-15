@@ -6,9 +6,11 @@ from dateutil.relativedelta import relativedelta, MO
 import altair as alt
 from datetime import datetime
 import APIBackend as back
+import matplotlib.pyplot as plt
 
 
-class ensembleModel():
+
+class baseModel():
     
     def __init__(self, ticker = None,trim_month = None,  trim_year = None):
         self.ticker = ticker
@@ -21,6 +23,9 @@ class ensembleModel():
         self.y = self.trimmed_data.Close      
         
         self.train_test_split()
+        
+        self.saved_forecasts_ = []
+
         
     def getData(self, ticker = None, month = None, year = None):
         ticker = self.ticker 
@@ -38,14 +43,11 @@ class ensembleModel():
         self.model_name = 'Naive'
         y = self.y 
         
+        period = self.getPeriods()
+            
         start_date = y.index[-1] + relativedelta(days=1)
-        period = 365
-        self.forecasted_results = np.repeat(y[-1], period)
-        
-        
-        
+        self.forecasted_results = np.repeat(y[-1], period)       
         self.NaiveDF = self.mergeDataFrame()
-
         
         return 
     
@@ -57,7 +59,7 @@ class ensembleModel():
 
        
         avg_drift = (y[-1]+y[1])/len(y)
-        period = 365
+        period = self.getPeriods()
         forecast_value= y[-1]
 
         for i in range(period):
@@ -66,8 +68,6 @@ class ensembleModel():
             
         self.DriftDF = self.mergeDataFrame()
         
-            
-
         
     def naiveSeasonalForecast(self):      
         y = self.y 
@@ -75,13 +75,83 @@ class ensembleModel():
         
         seasonality = sm.tsa.seasonal_decompose(y, period = 365).seasonal
         
-        period = 365
+        period = self.getPeriods()
         forecasted_results = np.repeat(y[-1], period)
         self.forecasted_results = (forecasted_results + seasonality[0:period])
         
         self.NaiveSeasonalDF = self.mergeDataFrame()
         
+########### Train Forecast Methods #############3        
+        
+    def naiveSeasonalTrainForecast(self, save_model = False):
+        
+        self.y = self.y_train
+        self.naiveSeasonalForecast()
+        
+#         train_forecast_df = self.combined_df
+        
+#         series =(train_forecast_df[train_forecast_df['Result']=='Forecasted']['Close'])-(self.y_test)
+#         self.resid= series.dropna()
+        
+        self.getEvaluation()
+        self.getTrainForecastPlot()
+        
+        if save_model == True:
+            self.saved_forecasts_.append(self.combined_df)
+            
+        
+    def driftTrainForecast(self, save_model = False):
+        self.y = self.y_train
+        self.driftForecast()
+        
+#         train_forecast_df = self.combined_df
+        
+#         series =(train_forecast_df[train_forecast_df['Result']=='Forecasted']['Close'])-(self.y_test)
+#         self.resid= series.dropna()
+        
+        self.getEvaluation()
+        self.getTrainForecastPlot()
+        
+        if save_model == True:
+            self.saved_forecasts_.append(self.combined_df)
+        
+    def naiveTrainForecast(self, save_model = False):
+        self.y = self.y_train
+        self.naiveForecast()
+        
+#         train_forecast_df = self.combined_df
+        
+#         series =(train_forecast_df[train_forecast_df['Result']=='Forecasted']['Close'])-(self.y_test)
+#         self.resid= series.dropna()
+        
+        self.getEvaluation()
+        self.getTrainForecastPlot() 
+        if save_model == True:
+            self.saved_forecasts_.append(self.combined_df)
+            
+    def ensembleModelTrainForecast(self):
+        saved_dfs =pd.concat(self.saved_forecasts_)
+        
+        ensemble_forecast_value =round(saved_dfs[saved_dfs['Result']=='Forecasted'].pivot(columns = 'Model')['Close'].sum(axis = 1)/len(self.saved_forecasts_),2)
+        
+        df = pd.DataFrame(ensemble_forecast_value)
+        df.columns = ['Close']
+        df['Result'] = 'Forecasted'
+        df['Model'] = 'Ensemble'
+        df
+
+        actuals_df =saved_dfs[saved_dfs['Result']=='Actual'].drop_duplicates()
+        self.combined_df = pd.concat([df,actuals_df])
+
+        self.getEvaluation()
+        self.getTrainForecastPlot()
+
     
+
+        
+        
+        
+############ DataFrame merging #################################    
     def mergeDataFrame(self):
         y = self.y 
         df = self.trimmed_data
@@ -103,7 +173,10 @@ class ensembleModel():
         self.combined_df = combined_df[['Close','Result','Model']]
         
         return self.combined_df
-        
+    
+    
+    
+################### visualization ###############        
     def forecastPlot(self):
         combined_df = self.combined_df
 
@@ -155,9 +228,29 @@ class ensembleModel():
             line, selectors, points, text_index, text 
         ).properties(
             width=1200, height=600
-        ).interactive()
+        )
     
-    def train_test_split(self, data = None, test_size = 0.2):
+    def getTrainForecastPlot(self):
+        df=self.combined_df
+        x=self.x
+        trimmed_data = self.trimmed_data
+        
+        a_df = df[df['Model']=='Actual']
+        m_df = df[df['Model']!='Actual']
+        
+
+        last_actual_dt=x[-1]
+
+        plt.figure(figsize=(20,10))
+        plt.plot(x, trimmed_data.Close)
+        plt.plot(m_df[m_df.index <= last_actual_dt].Close)
+        plt.legend(labels = df['Model'].unique())
+        plt.show()
+    
+
+    ### TrainTestMethod #########
+    
+    def train_test_split(self, data = None, test_size = 0.20):
         try:
             trimmed_data = self.trimmed_data
         except:
@@ -182,16 +275,47 @@ class ensembleModel():
         
         return
     
-    def train_forecast(self):
-        x_train = self.x_train
-        y_train = self.y_train
         
-        x_test = self.x_test
+    def getEvaluation(self):
+#         resid = self.resid
+        train_forecast_df = self.combined_df
         y_test = self.y_test
         
-        self.y = y_train
+        resid =np.abs((train_forecast_df[train_forecast_df['Result']=='Forecasted']['Close'])-(self.y_test)).dropna()
+#         self.resid= series.dropna()
         
-        self.naiveForecast()
+        ## MAE
+        MAE = np.sum(resid)/len(resid)
+        print(f'MAE: {round(MAE,2)}')
+        
+        ## MAPE
+        MAPE = np.sum((resid/y_test).dropna())/len(resid)
+        print(f'MAPE: {round(MAPE*100,2)}%')
+        
+
+    
+    def getPeriods(self):
+        if self.y.index[-1] < self.trimmed_data.index[-1]:
+            period = np.abs((self.y.index[-1] -self.trimmed_data.index[-1]).days)
+        else:
+            period = 365
+        
+        return period
+    
+
+        
+        
+class trainingMethods(baseModel):   
+    
+    def __init__(self, ticker = None, trim_month = None, trim_year = None):
+        super().__init__(ticker, trim_month, trim_year)
+    
+    
+class forecastMethods(baseModel):
+            pass
+        
+        
+        
         
         
         
