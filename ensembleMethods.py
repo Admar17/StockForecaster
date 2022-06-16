@@ -37,25 +37,44 @@ class baseModel():
     
         
         
-    def naiveForecast(self):
+    def naiveForecast(self, train_test = False, save_model = True):
         
         self.model_name = 'Naive'
-        y = self.y 
+        if train_test == True:
+            y = self.y_train 
+        else:
+            y = self.y
+            
+        self.y = y
+            
         
         period = self.getPeriods()
+        
+        
             
         start_date = y.index[-1] + relativedelta(days=1)
         self.forecasted_results = np.repeat(y[-1], period)       
         self.NaiveDF = self.mergeDataFrame()
         
-        return 
+        if train_test == True:
+            self.getEvaluation()
+            self.getTrainForecastPlot()
+        
+        if save_model == True:
+            self.saved_forecasts_.append(self.combined_df)
+        
     
-    def driftForecast(self):
+    def driftForecast(self,train_test = False, save_model = True):
+        
+        self.model_name = 'Drift'
+        if train_test == True:
+            y = self.y_train 
+        else:
+            y = self.y
+            
+        self.y = y
         
         self.forecasted_results = []
-        self.model_name = 'Drift'
-        y = self.y 
-
        
         avg_drift = (y[-1]+y[1])/len(y)
         period = self.getPeriods()
@@ -67,10 +86,23 @@ class baseModel():
             
         self.DriftDF = self.mergeDataFrame()
         
+        if train_test == True:
+            self.getEvaluation()
+            self.getTrainForecastPlot()
         
-    def naiveSeasonalForecast(self):      
-        y = self.y 
+        if save_model == True:
+            self.saved_forecasts_.append(self.combined_df)
+        
+        
+    def naiveSeasonalForecast(self,train_test = False, save_model = True, reset_ensemble_save_list = True):     
+        
         self.model_name = 'NaiveSeasonal'
+        if train_test == True:
+            y = self.y_train 
+        else:
+            y = self.trimmed_data.Close
+            
+        self.y = y
         
         seasonality = sm.tsa.seasonal_decompose(y, period = 365).seasonal
         
@@ -80,42 +112,33 @@ class baseModel():
         
         self.NaiveSeasonalDF = self.mergeDataFrame()
         
-########### Train Forecast Methods #############3        
-        
-    def naiveSeasonalTrainForecast(self, save_model = False, reset_ensemble_save_list = True):
-        self.y = self.y_train
-        
-        self.naiveSeasonalForecast()        
-        self.getEvaluation()
-        self.getTrainForecastPlot()
-        
         if reset_ensemble_save_list == True:
             self.saved_forecasts_ = []
+            
+        if train_test == True:
+            self.getEvaluation()
+            self.getTrainForecastPlot()
         
         if save_model == True:
             self.saved_forecasts_.append(self.combined_df)
             
+    def ensembleModelForecast(self):
+        saved_dfs =pd.concat(self.saved_forecasts_)
         
-    def driftTrainForecast(self, save_model = False):
-        self.y = self.y_train
+        ensemble_forecast_value =round(saved_dfs[saved_dfs['Result']=='Forecasted'].pivot(columns = 'Model')['Close'].sum(axis = 1)/len(self.saved_forecasts_),2)
         
-        self.driftForecast()
-        self.getEvaluation()
-        self.getTrainForecastPlot()
+        df = pd.DataFrame(ensemble_forecast_value)
+        df.columns = ['Close']
+        df['Result'] = 'Forecasted'
+        df['Model'] = 'Ensemble'
+        df
+
+        actuals_df =saved_dfs[saved_dfs['Result']=='Actual'].drop_duplicates()
+        self.combined_df = pd.concat([df,actuals_df])
+
         
-        if save_model == True:
-            self.saved_forecasts_.append(self.combined_df)
-        
-    def naiveTrainForecast(self, save_model = False):
-        self.y = self.y_train
-        
-        self.naiveForecast()       
-        self.getEvaluation()
-        self.getTrainForecastPlot() 
-        
-        if save_model == True:
-            self.saved_forecasts_.append(self.combined_df)
-            
+########### Train Forecast Methods #############3        
+                   
     def ensembleModelTrainForecast(self):
         saved_dfs =pd.concat(self.saved_forecasts_)
         
@@ -133,10 +156,6 @@ class baseModel():
         self.getEvaluation()
         self.getTrainForecastPlot()
 
-    
-
-        
-        
         
 ############ DataFrame merging #################################    
     def mergeDataFrame(self):
@@ -264,12 +283,10 @@ class baseModel():
     
         
     def getEvaluation(self):
-#         resid = self.resid
         train_forecast_df = self.combined_df
         y_test = self.y_test
         
-        resid =np.abs((train_forecast_df[train_forecast_df['Result']=='Forecasted']['Close'])-(self.y_test)).dropna()
-#         self.resid= series.dropna()
+        resid =np.abs((train_forecast_df[train_forecast_df['Result']=='Forecasted']['Close'])-(y_test)).dropna()
         
         ## MAE
         MAE = np.sum(resid)/len(resid)
